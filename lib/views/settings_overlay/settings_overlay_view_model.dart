@@ -221,6 +221,8 @@ abstract class SettingsOverlayViewModelBase extends ScreenViewModelBase with Sto
   Color get primaryColorSetting => getIt<ProjectManager>().settings.primaryColor;
   Language get projectLanguageSetting => getIt<ProjectManager>().settings.language;
   List<Language> get projectAvailableLanguagesSetting => getIt<ProjectManager>().settings.availableLanguages;
+  bool get showGallerySetting => getIt<ProjectManager>().settings.showGallery;
+  bool get showGetQrButtonSetting => getIt<ProjectManager>().settings.showGetQrButton;
 
   // System settings current values
   int get captureDelaySecondsSetting => getIt<SettingsManager>().settings.captureDelaySeconds;
@@ -228,6 +230,8 @@ abstract class SettingsOverlayViewModelBase extends ScreenViewModelBase with Sto
   double get collageAspectRatioSetting => getIt<SettingsManager>().settings.collageAspectRatio;
   double get collagePaddingSetting => getIt<SettingsManager>().settings.collagePadding;
   bool get enableWakelockSetting => getIt<SettingsManager>().settings.enableWakelock;
+  bool get enableUpdateCheckSetting => getIt<SettingsManager>().settings.enableUpdateCheck;
+  String get mockAppVersionSetting => getIt<SettingsManager>().settings.debug.mockAppVersion;
   Rotate get liveViewAndCaptureRotateSetting => getIt<SettingsManager>().settings.hardware.liveViewAndCaptureRotate;
   Flip get liveViewFlipSetting => getIt<SettingsManager>().settings.hardware.liveViewFlip;
   Flip get captureFlipSetting => getIt<SettingsManager>().settings.hardware.captureFlip;
@@ -306,6 +310,23 @@ abstract class SettingsOverlayViewModelBase extends ScreenViewModelBase with Sto
   ColorVisionDeficiency get simulateCvd => getIt<SettingsManager>().settings.debug.simulateCvd;
   int get simulateCvdSeverity => getIt<SettingsManager>().settings.debug.simulateCvdSeverity;
   bool get enableExtensivePrintJobLog => getIt<SettingsManager>().settings.debug.enableExtensivePrintJobLog;
+  bool get enableVideoModeSetting => getIt<SettingsManager>().settings.debug.enableVideoMode;
+  int get videoDurationSetting => getIt<SettingsManager>().settings.debug.videoDuration;
+  int get videoPreRecordDelayMsSetting => getIt<SettingsManager>().settings.debug.videoPreRecordDelayMs;
+  int get videoPostRecordDelayMsSetting => getIt<SettingsManager>().settings.debug.videoPostRecordDelayMs;
+  String get ffmpegArgumentsForRecordingSetting => getIt<SettingsManager>().settings.debug.ffmpegArgumentsForRecording;
+  bool get enableVideoAudioProcessingSetting => getIt<SettingsManager>().settings.debug.enableVideoAudioProcessing;
+  bool get enableVideoReceiptPrintingSetting => getIt<SettingsManager>().settings.debug.enableVideoReceiptPrinting;
+  List<OpenAiEndpointSetting> get openAiEndpointsSetting => getIt<SettingsManager>().settings.debug.openAiEndpoints;
+  /// The selected transcription endpoint id, or null when none is selected or the selected endpoint no longer exists.
+  String? get transcriptionEndpointIdSetting => _existingOpenAiEndpointId(getIt<SettingsManager>().settings.debug.transcriptionEndpointId);
+  String get transcriptionModelSetting => getIt<SettingsManager>().settings.debug.transcriptionModel;
+  /// The selected summary endpoint id, or null when none is selected or the selected endpoint no longer exists.
+  String? get summaryEndpointIdSetting => _existingOpenAiEndpointId(getIt<SettingsManager>().settings.debug.summaryEndpointId);
+  String get textSummaryPromptSetting => getIt<SettingsManager>().settings.debug.textSummaryPrompt;
+  String get llmModelSetting => getIt<SettingsManager>().settings.debug.llmModel;
+
+  String? _existingOpenAiEndpointId(String id) => openAiEndpointsSetting.any((e) => e.id == id) ? id : null;
 
   double get outputResHeightExcl => resolutionMultiplier * 1000;
   double get outputResWidthExcl => outputResHeightExcl/collageAspectRatioSetting;

@@ -24,10 +24,17 @@ For all languages, frameworks and tools, we support the latest versions.
   * Install using Cargo:
 
     ```sh
-    cargo install flutter_rust_bridge_codegen --version 2.12.0
+    cargo install flutter_rust_bridge_codegen --version 2.13.0
     ```
 
-* Flutter SDK 3.41.0+
+* `cargo-bundle-licenses`, used to collect the licenses of the Rust dependencies for the About screen
+  * Install using Cargo:
+
+    ```sh
+    cargo install cargo-bundle-licenses --version 4.2.0
+    ```
+
+* Flutter SDK 3.47.0+
   * Be sure that the `flutter` command is available globally as `flutter_rust_bridge_codegen` needs it.\
     This is especially important when using Flutter SDK managers like `asdf` or `fvm`
 * Optional: For building the documentation mdBook and some extensions for mdBook are needed
@@ -48,29 +55,36 @@ For all languages, frameworks and tools, we support the latest versions.
 * **Rust**
   * Recommended installation via [`rustup`](https://rustup.rs/) to keep components up to date
   * Use default options (MSVC host, target, and toolchain)
-* **MSYS2**
-  * Follow the instructions on the [MSYS2 website](https://www.msys2.org/)
-  * Install the following packages:
-
-    ```
-    mingw-w64-clang-x86_64-pkgconf mingw-w64-clang-x86_64-libgphoto2 mingw-w64-clang-x86_64-curl-winssl mingw-w64-clang-x86_64-nghttp2 mingw-w64-clang-x86_64-nghttp3
-    ```
-
-  * Make sure `{MSYS_INSTALL_PATH}\clang64\bin` is in your `PATH` (before other folders that also provide `pkg-config`/`pkgconf`)
+* **LLVM**, needed by bindgen to generate the Rust bindings for libgphoto2
+  * Install using `winget install LLVM.LLVM`, or with the installer from the [LLVM releases](https://github.com/llvm/llvm-project/releases)
+  * If LLVM is not installed in the default location, set `LIBCLANG_PATH` to the folder containing `libclang.dll`
+* **libgphoto2** and its dependencies are downloaded prebuilt from [momentobooth/native-deps](https://github.com/momentobooth/native-deps) by `just get-native-deps` (or run `windows/get_native_deps.ps1` directly)
+  * This also writes `.cargo/config.toml`, which points Cargo to the downloaded libraries
+  * The Windows build copies the libraries next to the executable, so no `PATH` changes are needed
 
 ### On macOS
 
+* **A Mac with Apple Silicon** running macOS 15 or newer, Intel Macs are not supported
+  * The Xcode project and the Rust plugin exclude `x86_64` (`EXCLUDED_ARCHS`), so `flutter build macos` only builds for Apple Silicon
 * **Xcode**
   * Installing from the App Store is recommended (automatic updates)
-* **Rust** (`aarch64-apple-darwin` or `x86_64-apple-darwin`, depending on your architecture)
+* **Rust** (`aarch64-apple-darwin`)
   * Recommended installation via [`rustup`](https://rustup.rs/)
   * `rustup` is also available via [Homebrew](https://formulae.brew.sh/formula/rustup)
-* **Homebrew**
+* **pkgconf**, used by the Rust build scripts to find libgphoto2
   * Install with
 
     ```sh
-    pkgconf libgphoto2
+    brew install pkgconf
     ```
+
+* **libgphoto2** and its dependencies are downloaded prebuilt from [momentobooth/native-deps](https://github.com/momentobooth/native-deps) by `just get-native-deps` (or run `macos/get_native_deps.sh` directly)
+  * This also writes `.cargo/config.toml`, which points Cargo to the downloaded libraries
+  * The Xcode build copies the libraries into `MomentoBooth.app/Contents/Libs`, for debug builds too, so a Homebrew installation of libgphoto2 is not needed and not used
+  * The minimum macOS version is that of the downloaded libraries, see the [native-deps README](https://github.com/momentobooth/native-deps#build-configuration)
+
+* **Code signing certificates**
+  * Both debug and release builds need a certificate and provisioning profile from the MomentoBooth certificates repository, see [Code signing on macOS](#code-signing-on-macos)
 
 ### On Linux
 
@@ -80,9 +94,12 @@ For all languages, frameworks and tools, we support the latest versions.
 * **Additional packages**
 
   ```
-  llvm libssl-dev libdigest-sha-perl libcurl4-openssl-dev libasound2-dev
+  llvm libssl-dev libdigest-sha-perl libcurl4-openssl-dev libasound2-dev libgphoto2-dev libsecret-1-dev libusb-1.0-0-dev liblzma-dev
   ```
 
+* **JDK** (any recent version, e.g. `openjdk-21-jdk-headless`)
+  * Needed to build the `jni` plugin, which `sentry_flutter` uses on Android only. Set `JAVA_HOME` if CMake cannot find it (`Could NOT find JNI`). Can be dropped once `sentry_flutter` is updated to 10.2 or later.
+  * If the first build failed on this, delete `build/linux/x64/release/CMakeCache.txt` before building again, otherwise the build tries to install the app to `/usr/local`.
 * **Rust** (`x86_64-unknown-linux-gnu` or `aarch64-unknown-linux-gnu`, depending on your architecture)
   * Recommended installation via [`rustup`](https://rustup.rs/)
 
@@ -98,6 +115,16 @@ Please note: This method expects global [fvm](https://fvm.app/) to be available 
 ### Manually
 
 Please note: Run all commands from the root folder of the repository, unless mentioned otherwise.
+
+0. On Windows and macOS, download the native dependencies.
+
+   ```
+   ./windows/get_native_deps.ps1
+   ```
+
+   ```sh
+   ./macos/get_native_deps.sh
+   ```
 
 1. Generate translation files.
 
@@ -118,8 +145,177 @@ Please note: Run all commands from the root folder of the repository, unless men
    dart run build_runner build
    ```
 
-4. Build and run the app with `flutter run` or use your IDE to run the application
+4. Generate the open source license overview (optional, the About screen shows a notice when it is missing)
+
+   ```
+   dart run tool/generate_licenses.dart
+   ```
+
+    * Note: The toolchain and bundled native libraries are maintained by hand in `licenses/manual_licenses.toml`. On Windows and macOS, `libgphoto2` and its dependencies are taken from the manifest of the downloaded native dependencies instead.
+5. Build and run the app with `flutter run` or use your IDE to run the application
     * Note: This will automatically build the Rust subproject before building the Flutter project, so no need to worry about that!
+
+## Linux Flatpak
+
+Linux releases are distributed as a Flatpak, built from `linux/packaging/flatpak/io.github.momentobooth.MomentoBooth.yml`. The whole build runs inside the GNOME SDK, so the application is built against the same libraries (glibc, GTK) as it runs with, independent of the build machine. No development environment is needed on the host, only Flatpak with the Flathub repository.
+
+1. Install flatpak-builder and the SDK with its extensions (once):
+
+   ```sh
+   flatpak install --user flathub org.flatpak.Builder org.gnome.Sdk//51 org.gnome.Platform//51 org.freedesktop.Sdk.Extension.rust-stable//26.08 org.freedesktop.Sdk.Extension.llvm22//26.08 org.freedesktop.Sdk.Extension.openjdk21//26.08
+   ```
+
+2. Build and install the Flatpak, from the root folder of the repository:
+
+   ```sh
+   flatpak run org.flatpak.Builder --user --install --force-clean --disable-rofiles-fuse build/flatpak linux/packaging/flatpak/io.github.momentobooth.MomentoBooth.yml
+   ```
+
+3. Run it with `flatpak run io.github.momentobooth.MomentoBooth`.
+
+To install the result on another machine, export a single-file bundle with `flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo ~/.local/share/flatpak/repo MomentoBooth.flatpak io.github.momentobooth.MomentoBooth`.
+
+Notes on the manifest:
+
+* `libgphoto2` is built as a module with the same options as the prebuilt native dependencies of Windows and macOS. Its dependencies (`libusb`, `libexif`, `libltdl`) are part of the runtime.
+* The build tools (`flutter_rust_bridge_codegen`, `cargo-expand`, `cargo-bundle-licenses`) and the Flutter SDK are separate modules, which flatpak-builder caches in `.flatpak-builder/` between builds and leaves out of the result. Only the application module is rebuilt when the sources change.
+* The build downloads pub packages, crates and the Flutter engine artifacts, so it needs network access. This is fine for self-hosted bundles, but not allowed on Flathub.
+* Cargokit runs `cargo` through `rustup`, which the SDK does not have. `linux/packaging/flatpak/rustup` is a minimal stand-in for the calls it makes.
+* The CI writes the Sentry configuration to `linux/packaging/flatpak/dart-defines.json` (not committed), which the build passes to `flutter build` when it exists.
+* `--disable-rofiles-fuse` is needed because flatpak-builder runs as a Flatpak itself, in which FUSE is not available.
+
+## libgphoto2 driver locations
+
+Camera support in `libgphoto2` is split into separate driver libraries, which it loads at runtime: camera drivers (*camlibs*, e.g. `ptp2`) and port drivers (*iolibs*, e.g. `usb1`). Each type is loaded from its own directory, which `libgphoto2` determines as follows:
+
+1. If the environment variables `CAMLIBS` and `IOLIBS` are set, it uses those directories.
+2. Otherwise it uses the directories that were configured when `libgphoto2` itself was compiled, e.g. `/usr/lib/x86_64-linux-gnu/libgphoto2/2.5.33`. These only exist on the machine where `libgphoto2` was installed to that location, so this only works for a system-wide installation, not for a copy of `libgphoto2` that is bundled with the application.
+
+> Release builds of MomentoBooth bundle `libgphoto2` with its drivers. `libgphoto2` must be pointed *to* those bundled driver directories through the environment variables. MomentoBooth can do this itself: when the [Dart defines](https://dart.dev/libraries/core/environment-declarations) `IOLIBS` and `CAMLIBS` are set at build time (`--dart-define IOLIBS=... --dart-define CAMLIBS=...`), or on Windows and macOS by default, the app resolves these paths relative to the executable's directory and sets the environment variables of its own process before initializing `libgphoto2`. The directories must exist, otherwise initializing gPhoto2 fails.
+
+| Platform | Release builds | Development |
+| - | - | - |
+| Windows | Built-in default in the app, no Dart defines needed: `libgphoto2_iolibs` and `libgphoto2_camlibs` next to the executable. `windows/CMakeLists.txt` copies them there from `.native_deps\windows-x64` (see `just get-native-deps`). | Same as release builds, as `libgphoto2` is bundled in development too. The drivers end up in `build\windows\x64\runner\Debug`. |
+| macOS | Built-in default in the app, no Dart defines needed: `../Libs/Iolibs` and `../Libs/Camlibs`, relative to `MomentoBooth.app/Contents/MacOS`. The Xcode build phase *Embed native dependencies* (`macos/embed_native_deps.sh`) copies them there from `.native_deps/macos-arm64` (see `just get-native-deps`). | Same as release builds, as `libgphoto2` is bundled in development too. The drivers end up in `build/macos/Build/Products/Debug/MomentoBooth.app/Contents/Libs`. |
+| Linux | Nothing needed: the Flatpak manifest builds `libgphoto2` with prefix `/app`, so its compiled-in directories (`/app/lib/libgphoto2/<version>` and `/app/lib/libgphoto2_port/<version>`) are where the drivers are inside the Flatpak. | Nothing needed, the system-wide installation of `libgphoto2` uses its compiled-in directories. |
+
+When Dart defines are set on Windows or macOS, they take precedence over the built-in default. Because the app always sets the environment variables on these platforms, setting `IOLIBS` or `CAMLIBS` yourself has no effect there.
+
+## Code signing on macOS
+
+The macOS Xcode project uses **manual** code signing, so *both* debug and release builds need a certificate and a provisioning profile that are not part of this repository:
+
+| Build configuration | Certificate | Provisioning profile |
+| - | - | - |
+| Debug & Profile (`flutter run`) | Apple Development | `match Development com.momentobooth.photobooth macos` |
+| Release (`flutter build macos`) | Developer ID Application | `match Direct com.momentobooth.photobooth macos` |
+
+These are shared through the private MomentoBooth certificates repository and are installed with [fastlane match](https://docs.fastlane.tools/actions/match/). You need read access to that repository — ask a maintainer if you do not have it.
+
+### One-time setup
+
+1. Install the Ruby dependencies (this installs fastlane in the version this repository is tested with):
+
+   ```sh
+   bundle install
+   ```
+
+2. Copy `.env.example` to `.env` in the root of the repository and fill in the values:
+
+   ```ini
+   MATCH_CERTIFICATES_GIT_URL=git@github.com:momentobooth/certificates.git
+   MATCH_CERTIFICATES_GIT_FULL_NAME="Your Full Name"
+   MATCH_CERTIFICATES_GIT_EMAIL=you@yourdomain.com
+
+   APP_STORE_CONNECT_KEY_ID=ABCD123456
+   APP_STORE_CONNECT_ISSUER_ID=00000000-0000-0000-0000-000000000000
+   APP_STORE_CONNECT_KEY=base64-of-the-AuthKey_ABCD123456.p8-file
+   ```
+
+   * fastlane automatically picks up the `.env` in the root of the repository
+   * `.env` is git ignored — never commit it
+   * The match passphrase is not part of this file: fastlane asks for it the first time you run one of the lanes below and stores it in your macOS Keychain, so you only have to enter it once — ask a maintainer for it
+   * The App Store Connect API key values are the same ones CI uses, see [On CI](#on-ci) for where they come from — ask a maintainer rather than creating a second key
+
+3. Make sure the SSH key of your machine has access to the certificates repository (`ssh -T git@github.com` should greet you by name).
+
+### Installing the certificates
+
+```sh
+bundle exec fastlane install_dev_cert      # needed to run debug builds
+bundle exec fastlane install_release_cert  # needed to make release builds
+```
+
+If you have fastlane installed globally, you can leave out the `bundle exec` prefix.
+
+Both lanes authenticate with the App Store Connect API key, so they never ask you to log in interactively. They install what is in the certificates repository into your login keychain, and create or renew a certificate when the repository does not hold a valid one.
+
+Certificates land in your login keychain, provisioning profiles in `~/Library/Developer/Xcode/UserData/Provisioning Profiles`. To check what you have installed:
+
+```sh
+security find-identity -v -p codesigning
+```
+
+### When a certificate has expired
+
+`install_dev_cert` renews an expired development certificate by itself: it deletes the old one from the certificates repository, creates a new one, and pushes it back, so everybody else only has to run the lane again.
+
+Renewing the *Developer ID* certificate can not be done this way. Apple only allows that with an **Account Holder** Apple ID (username and password), an API key does not have enough access for that certificate type. Apple also limits how many Developer ID certificates a team can have, so check with the other maintainers first, then run:
+
+```sh
+bundle exec fastlane match developer_id --renew_expired_certs true
+```
+
+Note that renewing does *not* revoke the old certificate on the Apple Developer portal, so it keeps occupying a certificate slot of the team. Use `fastlane match nuke development` to free slots up, but be careful: that revokes certificates for the whole team.
+
+### Troubleshooting
+
+**`Service key is empty` / `Could not receive latest API key from App Store Connect`**
+
+Apple removed the endpoint that fastlane uses to start an Apple ID login (`https://appstoreconnect.apple.com/olympus/v1/app/config` answers `404`), which breaks every interactive login, including `fastlane spaceauth`. The lanes above avoid it by using the API key.
+
+If you do need an interactive login, hand fastlane the key it cannot fetch itself — it uses the contents of this file when it exists:
+
+```sh
+printf '%s' '<authServiceKey>' > /tmp/spaceship_itc_service_key.txt
+```
+
+You can read that value from your browser: open App Store Connect, sign out, and in the network tab of the developer tools look up the `X-Apple-Widget-Key` request header of the call to `idmsa.apple.com/appleauth/auth/signin`.
+
+### Release builds and notarization
+
+macOS only starts a downloaded app without warnings when Apple has *notarized* it: Apple scans the signed app and registers a ticket for it. The ticket is then *stapled* to the app and to the dmg, so that Gatekeeper also accepts them on a Mac without an internet connection.
+
+The Xcode build of the Release configuration produces a signature that Apple accepts for this, through three build settings of the Runner target:
+
+| Build setting | Effect |
+| - | - |
+| `ENABLE_HARDENED_RUNTIME = YES` | Enables the hardened runtime, which notarization requires |
+| `OTHER_CODE_SIGN_FLAGS = --timestamp` | Gives every signature a secure timestamp. The scripts that embed the frameworks and the native dependencies (`macos/embed_native_deps.sh`) use this setting as well |
+| `CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO` | Keeps Xcode from adding the `get-task-allow` debugging entitlement, which notarization rejects |
+
+Things to keep in mind:
+
+* Do not change or re-sign the app bundle after the build. Signing it again without its entitlements removes them, after which the Keychain (secure storage) no longer works.
+* With the hardened runtime, access to a protected resource needs an entitlement in `macos/Runner/Release.entitlements`, like the one for the camera. Debug builds do not use the hardened runtime, so a missing entitlement only shows up in a release build.
+* `macos/ci_notarize.sh <app bundle or dmg>` notarizes and staples. It uses the App Store Connect API key from the same environment variables as fastlane.
+* To check a build: `spctl -a -vv MomentoBooth.app` prints `accepted` with `source=Notarized Developer ID`.
+
+### On CI
+
+The release workflow builds the app, notarizes it, puts it in a dmg, and signs and notarizes the dmg. As notarization takes Apple 10 to 15+ minutes per submission, the PR CI workflow only notarizes when it is started manually (*Run workflow* in the Actions tab).
+
+CI uses the `ci_install_release_cert_using_api` lane, which is the same as `install_release_cert` but additionally runs `setup_ci` to install everything into a temporary keychain. **Do not run that lane on your own machine** — the temporary keychain disappears again, and the certificates will not be where Xcode expects them.
+
+Its secrets are configured on the repository in GitHub. The App Store Connect API key values come from [App Store Connect](https://appstoreconnect.apple.com) → *Users and Access* → *Integrations* → *App Store Connect API* → *Team Keys*:
+
+| Variable | Where to find it |
+| - | - |
+| `APP_STORE_CONNECT_KEY_ID` | The *Key ID* column of the key (10 characters) |
+| `APP_STORE_CONNECT_ISSUER_ID` | The *Issuer ID* shown above the table |
+| `APP_STORE_CONNECT_KEY` | The downloaded `.p8` file, base64 encoded: `base64 -i AuthKey_XXXXXXXXXX.p8` |
+
+Note that Apple only lets you download the `.p8` file once, at the moment the key is created.
 
 ## Developing tips
 

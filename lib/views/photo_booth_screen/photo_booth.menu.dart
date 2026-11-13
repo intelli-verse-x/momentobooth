@@ -41,11 +41,13 @@ class MomentoMenuBar extends StatelessWidget {
             MenuFlyoutSubItem(text: Text(localizations.genericSimulateColorVisionDeficiency), items: (_) => _getColorVisionDeficiencyFlyoutItems(localizations), trailing: _shortcut("Ctrl+D")),
             const MenuFlyoutSeparator(),
             MenuFlyoutItem(text: Text(localizations.screensStart), onPressed: () => router.go(StartScreen.defaultRoute), leading: Icon(LucideIcons.play), trailing: _shortcut("Ctrl+H")),
-            MenuFlyoutItem(text: Text(localizations.screensGallery), onPressed: () => router.go(GalleryScreen.defaultRoute), leading: Icon(LucideIcons.images)),
+            if (getIt<ProjectManager>().settings.showGallery)
+              MenuFlyoutItem(text: Text(localizations.screensGallery), onPressed: () => router.go(GalleryScreen.defaultRoute), leading: Icon(LucideIcons.images)),
             MenuFlyoutItem(text: Text(localizations.screensManualCollage), onPressed: () => router.go(ManualCollageScreen.defaultRoute), leading: Icon(LucideIcons.layoutDashboard), trailing: _shortcut("Ctrl+M")),
           ]),
           MenuBarItem(title: localizations.genericHelp, items: [
             MenuFlyoutItem(text: Text(localizations.genericDocumentation), onPressed: () => launchUrl(Uri.parse("https://momentobooth.github.io/momentobooth/")), leading: Icon(LucideIcons.book)),
+            MenuFlyoutItem(text: Text(localizations.genericReleases), onPressed: () => launchUrl(Uri.parse(releasesPageUrl)), leading: Icon(LucideIcons.tag)),
             MenuFlyoutItem(text: Text(localizations.genericAbout), onPressed: () => SettingsOverlay.openDialog(context, initialPage: SettingsPageKey.about), leading: Icon(LucideIcons.info)),
           ]),
         ],

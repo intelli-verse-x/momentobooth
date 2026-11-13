@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Markdown Style
+
+Do not hard-wrap prose lines in Markdown files (e.g. at 80/100 characters). Write each paragraph as a single line and let the editor's word-wrap handle display. Line breaks should only occur between actual block elements (paragraphs, list items, headings), not inside a sentence or paragraph.
+
 ## Project Overview
 
 MomentoBooth is a cross-platform photo booth application (Windows, Linux, macOS) built with **Flutter (Dart)** for the UI and **Rust** for performance-critical hardware control, image processing, and native integrations. The two layers communicate via **flutter_rust_bridge v2**.
@@ -28,6 +32,7 @@ Generated files (`*.freezed.dart`, `*.g.dart`, `lib/src/rust/`) are not committe
 | Generate Rust↔Dart bridge | `just gen-bridge` |
 | Generate Freezed/MobX/JSON | `just gen-code` |
 | Generate localizations | `just gen-l10n` |
+| Generate license overview | `just gen-licenses` |
 | Watch bridge changes | `just watch-bridge` |
 | Watch Dart gen changes | `just watch-code` |
 
@@ -49,6 +54,8 @@ lib/
 ├── l10n/                      # ARB localization files (en, nl, fr, de)
 └── src/rust/                  # Auto-generated Rust↔Dart FFI bindings
 ```
+
+**Before adding a new widget**, check `documentation/src/widget_overview.md` — a grep-friendly catalog of every reusable widget under `lib/views/`, organized by folder, to avoid duplicating an existing one. **After adding, removing, renaming, or moving a widget**, update `documentation/src/widget_overview.md` to match — it must stay in sync with the actual widgets under `lib/views/`.
 
 **UI framework:** `fluent_ui` (Windows design language)
 **Routing:** `go_router`
@@ -96,11 +103,12 @@ rust/src/
 
 Requires:
 
-- Flutter 3.41.7 via FVM (`just install-flutter`)
+- Flutter 3.47.4 via FVM (`just install-flutter`)
 - Rust via rustup
-- `flutter_rust_bridge_codegen` 2.12.0 (`just install-bridge-codegen`)
-- **Windows:** MSYS2 with `libgphoto2`, `pkgconf`, `curl`
-- **Linux:** `llvm`, `libssl-dev`, `libcurl4-openssl-dev`, `libasound2-dev`
-- **macOS:** Homebrew `pkgconf`, `libgphoto2`
+- `flutter_rust_bridge_codegen` 2.13.0 (`just install-bridge-codegen`)
+- `cargo-bundle-licenses` 4.2.0 (`just install-cargo-bundle-licenses`)
+- **Windows:** LLVM (libclang for bindgen); libgphoto2 and its dependencies are downloaded prebuilt by `just get-native-deps`
+- **Linux:** `llvm`, `libssl-dev`, `libcurl4-openssl-dev`, `libasound2-dev`, `libgphoto2-dev`, `libsecret-1-dev`, `libusb-1.0-0-dev`, and a JDK (`JAVA_HOME`) for the `jni` plugin of `sentry_flutter`. Releases are Flatpaks built from `linux/packaging/flatpak/` (see "Linux Flatpak" in `dev_setup.md`)
+- **macOS:** Apple Silicon only; Homebrew `pkgconf`; libgphoto2 and its dependencies are downloaded prebuilt by `just get-native-deps`
 
 Full setup guide: `documentation/src/dev_setup.md`
