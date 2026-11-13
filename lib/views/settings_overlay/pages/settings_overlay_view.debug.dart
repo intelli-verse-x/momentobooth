@@ -41,6 +41,20 @@ Widget _getDebugTab(SettingsOverlayViewModel viewModel, SettingsOverlayControlle
             buttonText: "Clear photos",
             onPressed: controller.onPhotosClearPressed,
           ),
+          SettingsActionTile(
+            icon: LucideIcons.folder,
+            title: "Get camera files",
+            subtitle: "Retrieve a list of files on the camera",
+            buttonText: "Get filelist",
+            onPressed: controller.onGetCameraFilesPressed,
+          ),
+          SettingsActionTile(
+            icon: LucideIcons.settings,
+            title: "Get camera config",
+            subtitle: "Retrieve the camera's full config",
+            buttonText: "Get config",
+            onPressed: controller.onGetCameraConfigPressed,
+          ),
         ],
       ),
       SettingsSection(
@@ -60,8 +74,59 @@ Widget _getDebugTab(SettingsOverlayViewModel viewModel, SettingsOverlayControlle
             buttonText: "Report Fake Error",
             onPressed: () => throw Exception("This is a fake error to test error reporting"),
           ),
+          SettingsActionTile(
+            icon: LucideIcons.mailWarning,
+            title: "Print test to receipt printer",
+            subtitle: "Test whether printing to the receipt printer works",
+            buttonText: "Initiate test print",
+            onPressed: () async {
+              ByteData imageData = await rootBundle.load('assets/bitmap/placeholder.png');
+              await printReceipt(
+                receipt: Receipt(
+                  commands: [
+                    ReceiptPrinterCommand.printImage(imageData.buffer.asUint8List()),
+                    ReceiptPrinterCommand.feed(),
+                    ReceiptPrinterCommand.cut(),
+                  ],
+                ),
+                printerUsbVid: 0x0AA7,
+                printerUsbPid: 0x0304,
+                printingWidth: 576,
+              );
+            },
+          ),
         ],
       ),
+      // The mock version is a development aid only: release builds always compare against
+      // the real application version.
+      if (kDebugMode)
+        SettingsSection(
+          title: "Update check",
+          settings: [
+            SettingsTextEditTile(
+              icon: LucideIcons.tag,
+              title: "Mock app version",
+              subtitle: "Pretend the app runs this version, so the update check finds newer releases. Leave empty to use the real version.",
+              controller: controller.mockAppVersionController,
+              onFinishedEditing: controller.onMockAppVersionChanged,
+            ),
+            SettingsActionTile(
+              icon: LucideIcons.refreshCw,
+              title: "Check for updates now",
+              subtitle: "Run the update check against GitHub without restarting the app",
+              buttonText: "Check now",
+              onPressed: controller.onCheckForUpdatePressed,
+            ),
+            Observer(
+              builder: (context) => SettingsTextDisplayTile(
+                icon: LucideIcons.gitBranch,
+                title: "Update check result",
+                subtitle: "The outcome of the most recent update check",
+                text: _updateCheckResult(getIt<UpdateManager>()),
+              ),
+            ),
+          ],
+        ),
       SettingsSection(
         title: "Actions - gPhoto2",
         settings: [
@@ -201,4 +266,15 @@ Widget _getDebugTab(SettingsOverlayViewModel viewModel, SettingsOverlayControlle
       ),
     ],
   );
+}
+
+String _updateCheckResult(UpdateManager updateManager) {
+  if (updateManager.isChecking) return "Checking...";
+  if (updateManager.lastCheckError case final String error) return "Failed: $error";
+
+  AppRelease? latestRelease = updateManager.latestRelease;
+  if (latestRelease == null) return "Not checked yet";
+
+  String comparison = "running ${updateManager.currentVersion}, newest ${latestRelease.tagName}";
+  return updateManager.isUpdateAvailable ? "Update available ($comparison)" : "Up to date ($comparison)";
 }

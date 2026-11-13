@@ -10,15 +10,18 @@ import 'package:momento_booth/main.dart';
 import 'package:momento_booth/managers/live_view_manager.dart';
 import 'package:momento_booth/managers/photos_manager.dart';
 import 'package:momento_booth/managers/sfx_manager.dart';
+import 'package:momento_booth/managers/update_manager.dart';
 import 'package:momento_booth/models/maker_note_data.dart';
 import 'package:momento_booth/models/project_settings.dart';
 import 'package:momento_booth/models/settings.dart';
+import 'package:momento_booth/repositories/secrets/secrets_repository.dart';
 import 'package:momento_booth/src/rust/hardware_control/live_view/gphoto2.dart';
 import 'package:momento_booth/src/rust/hardware_control/live_view/nokhwa.dart';
 import 'package:momento_booth/src/rust/utils/ipp_client.dart';
 import 'package:momento_booth/utils/color_vision_deficiency.dart';
 import 'package:momento_booth/utils/file_utils.dart';
 import 'package:momento_booth/views/base/screen_controller_base.dart';
+import 'package:momento_booth/views/components/dialogs/gphoto2_camera_warning_dialog.dart';
 import 'package:momento_booth/views/settings_overlay/settings_overlay_view_model.dart';
 
 class SettingsOverlayController extends ScreenControllerBase<SettingsOverlayViewModel> {
@@ -76,6 +79,21 @@ class SettingsOverlayController extends ScreenControllerBase<SettingsOverlayView
   TextEditingController? _faceRecognitionServerUrlController;
   TextEditingController get faceRecognitionServerUrlController => _faceRecognitionServerUrlController ??= TextEditingController(text: viewModel.faceRecognitionServerUrlSetting);
 
+  TextEditingController? _ffmpegArgumentsForRecordingController;
+  TextEditingController get ffmpegArgumentsForRecordingController => _ffmpegArgumentsForRecordingController ??= TextEditingController(text: viewModel.ffmpegArgumentsForRecordingSetting);
+  
+  TextEditingController? _textSummaryPromptController;
+  TextEditingController get textSummaryPromptController => _textSummaryPromptController ??= TextEditingController(text: viewModel.textSummaryPromptSetting);
+  
+  TextEditingController? _transcriptionModelController;
+  TextEditingController get transcriptionModelController => _transcriptionModelController ??= TextEditingController(text: viewModel.transcriptionModelSetting);
+
+  TextEditingController? _llmModelController;
+  TextEditingController get llmModelController => _llmModelController ??= TextEditingController(text: viewModel.llmModelSetting);
+
+  TextEditingController? _mockAppVersionController;
+  TextEditingController get mockAppVersionController => _mockAppVersionController ??= TextEditingController(text: viewModel.mockAppVersionSetting);
+
   // Initialization/Deinitialization
 
   SettingsOverlayController({
@@ -113,9 +131,11 @@ class SettingsOverlayController extends ScreenControllerBase<SettingsOverlayView
     ));
   }
 
-  void setImagingGPhoto2(GPhoto2CameraInfo camera) {
+  Future<void> setImagingGPhoto2(GPhoto2CameraInfo camera) async {
+    if (!await GPhoto2CameraWarningDialog.confirmIfNeeded(contextAccessor.buildContext, camera.model)) return;
+
     viewModel.showCustomImagingSettings = false;
-    viewModel.updateSettings((settings) => settings.copyWith.hardware(
+    await viewModel.updateSettings((settings) => settings.copyWith.hardware(
       liveViewMethod: LiveViewMethod.gphoto2,
       captureMethod: CaptureMethod.gPhoto2,
       gPhoto2CameraId: GPhoto2Camera.fromCameraInfo(camera).id
@@ -213,12 +233,38 @@ class SettingsOverlayController extends ScreenControllerBase<SettingsOverlayView
       viewModel.updateProjectSettings((settings) => settings.copyWith(availableLanguages: languages));
     }
   }
+  
+  void onShowGalleryChanged(bool? showGallery) {
+    if (showGallery != null) {
+      viewModel.updateProjectSettings((settings) => settings.copyWith(showGallery: showGallery));
+    }
+  }
+
+  void onShowGetQrButtonChanged(bool? showGetQrButton) {
+    if (showGetQrButton != null) {
+      viewModel.updateProjectSettings((settings) => settings.copyWith(showGetQrButton: showGetQrButton));
+    }
+  }
 
   void onEnableWakelockChanged(bool? enableWakelock) {
     if (enableWakelock != null) {
       viewModel.updateSettings((settings) => settings.copyWith(enableWakelock: enableWakelock));
     }
   }
+
+  void onEnableUpdateCheckChanged(bool? enableUpdateCheck) {
+    if (enableUpdateCheck != null) {
+      viewModel.updateSettings((settings) => settings.copyWith(enableUpdateCheck: enableUpdateCheck));
+    }
+  }
+
+  void onMockAppVersionChanged(String? mockAppVersion) {
+    if (mockAppVersion != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(mockAppVersion: mockAppVersion.trim()));
+    }
+  }
+
+  Future<void> onCheckForUpdatePressed() => getIt<UpdateManager>().checkForUpdate();
 
   void onLiveViewAndCaptureRotateChanged(Rotate? liveViewAndCaptureRotate) {
     if (liveViewAndCaptureRotate != null) {
@@ -262,9 +308,14 @@ class SettingsOverlayController extends ScreenControllerBase<SettingsOverlayView
     }
   }
 
-  void onGPhoto2CameraIdChanged(String? gPhoto2CameraId) {
+  Future<void> onGPhoto2CameraIdChanged(String? gPhoto2CameraId) async {
     if (gPhoto2CameraId != null) {
-      viewModel.updateSettings((settings) => settings.copyWith.hardware(gPhoto2CameraId: gPhoto2CameraId));
+      // The id has the form "<port>/<model>", only the model is stable across USB ports.
+      final model = gPhoto2CameraId.substring(gPhoto2CameraId.indexOf('/') + 1);
+      // Check if the camera has been confirmed before, and if not, show a warning dialog. If the user cancels, do not change the settings.
+      if (!await GPhoto2CameraWarningDialog.confirmIfNeeded(contextAccessor.buildContext, model)) return;
+
+      await viewModel.updateSettings((settings) => settings.copyWith.hardware(gPhoto2CameraId: gPhoto2CameraId));
     }
   }
 
@@ -758,6 +809,111 @@ class SettingsOverlayController extends ScreenControllerBase<SettingsOverlayView
   void onEnableExtensivePrintJobLogChanged(bool? enableExtensivePrintJobLog) {
     if (enableExtensivePrintJobLog != null) {
       viewModel.updateSettings((settings) => settings.copyWith.debug(enableExtensivePrintJobLog: enableExtensivePrintJobLog));
+    }
+  }
+
+  void onEnableVideoModeChanged(bool? enableVideoMode) {
+    if (enableVideoMode != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(enableVideoMode: enableVideoMode));
+    }
+  }
+
+  void onVideoDurationChanged(int? videoDuration) {
+    if (videoDuration != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(videoDuration: videoDuration));
+    }
+  }
+
+  void onVideoPreRecordDelayMsChanged(int? videoPreRecordDelayMs) {
+    if (videoPreRecordDelayMs != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(videoPreRecordDelayMs: videoPreRecordDelayMs));
+    }
+  }
+
+  void onFfmpegArgumentsForRecordingChanged(String? ffmpegArgumentsForRecording) {
+    if (ffmpegArgumentsForRecording != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(ffmpegArgumentsForRecording: ffmpegArgumentsForRecording));
+    }
+  }
+
+  void onEnableVideoAudioProcessingChanged(bool? enableVideoAudioProcessing) {
+    if (enableVideoAudioProcessing != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(enableVideoAudioProcessing: enableVideoAudioProcessing));
+    }
+  }
+
+  void onEnableVideoReceiptPrintingChanged(bool? enableVideoReceiptPrinting) {
+    if (enableVideoReceiptPrinting != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(enableVideoReceiptPrinting: enableVideoReceiptPrinting));
+    }
+  }
+
+  /// Adds or updates [endpoint] and stores or removes its API key. A null [newApiKey] keeps the stored key.
+  Future<void> onOpenAiEndpointSaved(OpenAiEndpointSetting endpoint, String? newApiKey, bool clearApiKey) async {
+    final secretKey = openAiEndpointSecretKey(endpoint.id);
+    if (clearApiKey) {
+      await getIt<SecretsRepository>().deleteSecret(secretKey);
+    } else if (newApiKey != null) {
+      await getIt<SecretsRepository>().storeSecret(secretKey, newApiKey);
+    }
+
+    final endpoints = [...viewModel.openAiEndpointsSetting];
+    final index = endpoints.indexWhere((e) => e.id == endpoint.id);
+    if (index >= 0) {
+      endpoints[index] = endpoint;
+    } else {
+      endpoints.add(endpoint);
+    }
+    await viewModel.updateSettings((settings) => settings.copyWith.debug(openAiEndpoints: endpoints));
+  }
+
+  /// Removes [endpoint] and its API key, and clears any action that referenced it.
+  Future<void> onOpenAiEndpointDeleted(OpenAiEndpointSetting endpoint) async {
+    await getIt<SecretsRepository>().deleteSecret(openAiEndpointSecretKey(endpoint.id));
+
+    await viewModel.updateSettings((settings) {
+      final debug = settings.debug;
+      return settings.copyWith.debug(
+        openAiEndpoints: debug.openAiEndpoints.where((e) => e.id != endpoint.id).toList(),
+        transcriptionEndpointId: debug.transcriptionEndpointId == endpoint.id ? '' : debug.transcriptionEndpointId,
+        summaryEndpointId: debug.summaryEndpointId == endpoint.id ? '' : debug.summaryEndpointId,
+      );
+    });
+  }
+
+  void onTranscriptionEndpointChanged(String? endpointId) {
+    if (endpointId != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(transcriptionEndpointId: endpointId));
+    }
+  }
+
+  void onTranscriptionModelChanged(String? transcriptionModel) {
+    if (transcriptionModel != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(transcriptionModel: transcriptionModel));
+    }
+  }
+
+  void onSummaryEndpointChanged(String? endpointId) {
+    if (endpointId != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(summaryEndpointId: endpointId));
+    }
+  }
+
+  void onTextSummaryPromptChanged(String? textSummaryPrompt) {
+    if (textSummaryPrompt != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(textSummaryPrompt: textSummaryPrompt));
+    }
+  }
+
+  void onLlmModelChanged(String? llmModel) {
+    if (llmModel != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(llmModel: llmModel));
+    }
+  }
+
+  void onVideoPostRecordDelayMsChanged(int? videoPostRecordDelayMs) {
+    if (videoPostRecordDelayMs != null) {
+      viewModel.updateSettings((settings) => settings.copyWith.debug(videoPostRecordDelayMs: videoPostRecordDelayMs));
     }
   }
 

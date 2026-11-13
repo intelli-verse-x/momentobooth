@@ -1,4 +1,4 @@
-default: install-cargo-expand install-bridge-codegen install-flutter get-deps gen-bridge gen-code gen-l10n
+default: install-cargo-expand install-bridge-codegen install-cargo-bundle-licenses install-flutter get-deps get-native-deps gen-bridge gen-code gen-l10n gen-licenses
 
 set windows-shell := ["pwsh.exe", "-NoProfile", "-c"]
 
@@ -10,7 +10,10 @@ install-cargo-expand:
   cargo install cargo-expand
 
 install-bridge-codegen:
-  cargo install flutter_rust_bridge_codegen@2.12.0
+  cargo install flutter_rust_bridge_codegen@2.13.0
+
+install-cargo-bundle-licenses:
+  cargo install cargo-bundle-licenses@4.2.0
 
 install-flutter:
   fvm install -s --skip-pub-get
@@ -18,14 +21,29 @@ install-flutter:
 get-deps:
   fvm flutter pub get
 
+[windows]
+get-native-deps:
+  ./windows/get_native_deps.ps1
+
+[macos]
+get-native-deps:
+  ./macos/get_native_deps.sh
+
+[linux]
+get-native-deps:
+  @echo "Native dependencies are installed through the system package manager on this platform"
+
 gen-bridge:
   flutter_rust_bridge_codegen generate
 
 gen-code:
-  fvm dart run build_runner build --delete-conflicting-outputs
+  fvm dart run build_runner build
 
 gen-l10n:
   fvm flutter gen-l10n
+
+gen-licenses:
+  fvm dart run tool/generate_licenses.dart
 
 ##
 # Signing
@@ -45,22 +63,22 @@ watch-bridge:
   flutter_rust_bridge_codegen generate --watch
 
 watch-code:
-  fvm dart run build_runner watch --delete-conflicting-outputs
+  fvm dart run build_runner watch
 
 ##
 # Building
 ##
 
 [windows]
-build-release:
+build-release: gen-licenses
   fvm flutter build windows --release
 
 [linux]
-build-release:
+build-release: gen-licenses
   fvm flutter build linux --release
 
 [macos]
-build-release:
+build-release: gen-licenses
   fvm flutter build macos --release
 
 test:

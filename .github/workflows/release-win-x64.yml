@@ -70,20 +70,16 @@ jobs:
         flutter config --no-analytics --no-cli-animations
         flutter precache --windows
 
-    - name: Setup MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: clang64
-        path-type: inherit
-        pacboy: pkgconf:c curl-winssl:c nghttp2:c nghttp3:c libusb:c gcc:c libgphoto2:c
-        install: git patch
-        location: '${{ env.DEV_DRIVE }}/msys2'
+    - name: Get native dependencies
+      working-directory: ${{ env.DEV_DRIVE }}/momentobooth
+      run: ./windows/get_native_deps.ps1
 
-    - name: Fix environment for build and bundle
+    - name: Setup LLVM (lld-link, and libclang for bindgen)
       run: |
-        Add-Content $env:GITHUB_PATH (msys2 -c 'cygpath -w /clang64/bin')
-        echo "MINGW_BUNDLEDLLS_SEARCH_PATH=$(msys2 -c 'cygpath -w /clang64/bin')" >> $env:GITHUB_ENV
-        echo "CLANG64_LIB_PATH=$(msys2 -c 'cygpath -w /clang64/lib')" >> $env:GITHUB_ENV
+        $llvm = 'C:\Program Files\LLVM\bin'
+        if (-not (Test-Path "$llvm\libclang.dll")) { choco install llvm -y --no-progress }
+        Add-Content $env:GITHUB_PATH $llvm
+        Add-Content $env:GITHUB_ENV "LIBCLANG_PATH=$llvm"
 
     - name: Install minimal Rust
       uses: dtolnay/rust-toolchain@stable
@@ -104,14 +100,18 @@ jobs:
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@main
 
-    - name: Install cargo-expand, frbc, h3xup
-      run: cargo binstall cargo-expand flutter_rust_bridge_codegen@2.12.0 h3xup --force -y
+    - name: Install cargo-expand, frbc, cargo-bundle-licenses, h3xup
+      env:
+        # Without a token, the GitHub API rate limit of the shared runner IP is often exceeded, making binstall build from source
+        GITHUB_TOKEN: ${{ github.token }}
+      run: cargo binstall cargo-expand@1.0.126 flutter_rust_bridge_codegen@2.13.0 cargo-bundle-licenses@4.2.0 h3xup --force -y
 
     - name: Prepare sources
       working-directory: ${{ env.DEV_DRIVE }}/momentobooth
       run: |
         flutter pub get --enforce-lockfile
         flutter gen-l10n
+        dart run tool/generate_licenses.dart
         flutter_rust_bridge_codegen generate
         dart run build_runner build
         flutter analyze --no-pub
@@ -128,16 +128,35 @@ jobs:
         echo "distributor_version=${release_version/-/+}" >> $GITHUB_OUTPUT
         echo "build_number=$build_number" >> $GITHUB_OUTPUT
 
+    # The in-app update check reads its release notes from CHANGELOG.md on the default branch,
+    # but the release body should carry them as well for people browsing GitHub.
+    - name: Compose release notes
+      id: compose_release_notes
+      shell: bash
+      run: |
+        version="${{ steps.extract_release_version.outputs.friendly_version }}"
+        notes_file="release-notes.md"
+        section=$(awk -v heading="## $version" '$0 == heading { capture = 1; next } capture && /^## / { exit } capture { print }' CHANGELOG.md)
+        {
+          if [ -n "$(echo "$section" | tr -d '[:space:]')" ]; then
+            echo "## What's changed in $version"
+            echo "$section"
+          else
+            echo "No changelog entry was found for $version."
+          fi
+          echo
+          echo "For Windows users: MomentoBooth needs the [Visual C++ Redistributable runtime libraries](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170). The setup version will install these automatically. When using the zip, install them manually."
+        } > "$notes_file"
+        echo "notes_file=$notes_file" >> $GITHUB_OUTPUT
+
     - name: Build project
       working-directory: ${{ env.DEV_DRIVE }}/momentobooth
-      run: flutter build windows -v --no-pub --release --dart-define SENTRY_DSN=${{ secrets.SENTRY_DSN }} --dart-define SENTRY_ENVIRONMENT=Production --dart-define SENTRY_RELEASE=${{ steps.extract_release_version.outputs.distributor_version }} --dart-define IOLIBS=libgphoto2_iolibs --dart-define CAMLIBS=libgphoto2_camlibs --dart-define LIBGPHOTO2_GIT_REV=${{ env.LIBGPHOTO2_GIT_REV }}
+      run: flutter build windows -v --no-pub --release --dart-define SENTRY_DSN=${{ secrets.SENTRY_DSN }} --dart-define SENTRY_ENVIRONMENT=Production --dart-define SENTRY_RELEASE=${{ steps.extract_release_version.outputs.distributor_version }}
 
-    - name: Bundle dependencies
+    - name: Check bundled dependencies
       working-directory: ${{ env.DEV_DRIVE }}/momentobooth
-      shell: pwsh
       run: |
-        .\windows\bundle_libs.ps1
-        $file = Join-Path $env:DEV_DRIVE 'momentobooth\build\windows\x64\runner\Release\libgphoto2-6.dll'
+        $file = 'build\windows\x64\runner\Release\libgphoto2-6.dll'
         if (-not (Test-Path $file)) {
           Write-Error "Missing file: $file"
           exit 1
@@ -175,5 +194,4 @@ jobs:
         replacesArtifacts: true
         tag: ${{ steps.extract_release_version.outputs.release_version }}
         artifacts: "${{ env.DEV_DRIVE }}/momentobooth/build/windows/x64/runner/Release/MomentoBooth-${{ steps.extract_release_version.outputs.release_version }}-Win-x64.zip,${{ env.DEV_DRIVE }}/momentobooth/windows/installer/MomentoBooth-${{ steps.extract_release_version.outputs.release_version }}-Win-x64-Setup.exe"
-        body: |
-          For Windows users: MomentoBooth needs the [Visual C++ Redistributable runtime libraries](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170). The setup version will install these automatically. When using the zip, install them manually.
+        bodyFile: ${{ steps.compose_release_notes.outputs.notes_file }}
